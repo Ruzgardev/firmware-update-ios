@@ -13,7 +13,6 @@ struct ContentView: View {
     @StateObject private var firmwareService: FirmwareUpdateService
     @State private var selectedPeripheral: CBPeripheral?
     @State private var showingDeviceInfo = false
-    @State private var showingLogs = false
     
     init() {
         let bluetooth = BluetoothService()
@@ -25,10 +24,46 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // Header
-                headerView
-                
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Ana Sayfa
+                    mainView
+                    
+                    // Mesaj Logları - sadece bağlantı kurulduktan sonra göster
+                    if bluetoothService.isConnected {
+                        messageLogView
+                    }
+                }
+            }
+            .navigationTitle("Mio Firmware Update")
+            .navigationBarTitleDisplayMode(.inline)
+            .onTapGesture {
+                // Klavyeyi kapat
+                hideKeyboard()
+            }
+        }
+        .onAppear {
+            bluetoothService.delegate = self
+            _ = firmwareService.loadFirmwareFile(fileName: "firmware")
+        }
+    }
+    
+    // MARK: - Helper Functions
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
+    // MARK: - Main View
+    private var mainView: some View {
+        VStack(spacing: 20) {
+            // Header
+            headerView
+            
+            if bluetoothService.isConnected {
+                // Bağlantı kurulduktan sonra sadece firmware update kısmını göster
+                firmwareUpdateView
+            } else {
+                // Bağlantı yokken cihaz listesi ve bağlantı durumunu göster
                 // Connection Status
                 connectionStatusView
                 
@@ -36,47 +71,34 @@ struct ContentView: View {
                 if bluetoothService.isScanning || !bluetoothService.discoveredPeripherals.isEmpty {
                     deviceListView
                 }
-                
-                // Firmware Update Section
-                if bluetoothService.isConnected {
-                    firmwareUpdateView
-                }
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Mio Firmware Update")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        showingLogs = true
-                    }) {
-                        Image(systemName: "doc.text")
-                            .foregroundColor(.blue)
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        if bluetoothService.isScanning {
-                            bluetoothService.stopScan()
-                        } else {
-                            bluetoothService.startScan()
-                        }
-                    }) {
-                        Image(systemName: bluetoothService.isScanning ? "stop.circle.fill" : "magnifyingglass.circle.fill")
-                            .foregroundColor(.blue)
-                    }
-                }
-            }
-            .sheet(isPresented: $showingLogs) {
-                LogView()
             }
         }
-        .onAppear {
-            bluetoothService.delegate = self
-            _ = firmwareService.loadFirmwareFile(fileName: "firmware")
+        .padding()
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    if bluetoothService.isScanning {
+                        bluetoothService.stopScan()
+                    } else {
+                        bluetoothService.startScan()
+                    }
+                }) {
+                    Image(systemName: bluetoothService.isScanning ? "stop.circle.fill" : "magnifyingglass.circle.fill")
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Message Log View
+    private var messageLogView: some View {
+        VStack(spacing: 0) {
+            // Divider
+            Divider()
+                .background(Color.gray.opacity(0.3))
+            
+            // Mesaj log alanı
+            BluetoothMessageLogView(bluetoothService: bluetoothService)
         }
     }
     
@@ -219,39 +241,6 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!bluetoothService.isReady)
                     
-                    // Yeni cihaz için ek özellikler
-                    HStack(spacing: 10) {
-                        Button("Cihaz Bilgileri") {
-                            let command = Commands.GET_DEVICE_INFO()
-                            bluetoothService.sendJSON(command)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!bluetoothService.isReady)
-                        
-                        Button("Log Listesi") {
-                            let command = Commands.GET_LOG_LIST()
-                            bluetoothService.sendJSON(command)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!bluetoothService.isReady)
-                    }
-                    
-                    // Ek özellikler
-                    HStack(spacing: 10) {
-                        Button("Zaman Ayarı") {
-                            let command = Commands.SET_TIMEOUT(30)
-                            bluetoothService.sendJSON(command)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!bluetoothService.isReady)
-                        
-                        Button("Random Play") {
-                            let command = Commands.SET_RANDOM_PLAY(true)
-                            bluetoothService.sendJSON(command)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!bluetoothService.isReady)
-                    }
                 } else {
                     Button("Durdur") {
                         firmwareService.stopFirmwareUpdate()

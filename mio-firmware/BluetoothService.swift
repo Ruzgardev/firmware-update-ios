@@ -128,6 +128,14 @@ class BluetoothService: NSObject, ObservableObject {
         Logger.shared.connection("Veri gönderiliyor: \(data.count) byte")
         Logger.shared.connection("Karakteristik: \(characteristic.uuid.uuidString)")
         
+        // Mesaj loguna ekle
+        if let string = String(data: data, encoding: .utf8) {
+            BluetoothMessageLogger.shared.logOutgoingMessage(string, rawData: data)
+        } else {
+            let hexString = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+            BluetoothMessageLogger.shared.logOutgoingMessage(hexString, rawData: data)
+        }
+        
         peripheral.writeValue(data, for: characteristic, type: .withoutResponse)
         Logger.shared.connection("Veri gönderildi: \(data.count) byte")
     }
@@ -421,12 +429,24 @@ extension BluetoothService: CBPeripheralDelegate {
         // String olarak çözümle
         if let string = String(data: data, encoding: .utf8) {
             Logger.shared.connection("String veri: \(string)")
+            print("🔵 MIO RESPONSE: \(string)") // Debug için
+            
+            // Mesaj loguna ekle
+            BluetoothMessageLogger.shared.logIncomingMessage(string, rawData: data)
+            print("🔵 MESSAGE LOGGED: \(string)") // Debug için
+            
             delegate?.serialDidReceiveString(string)
         } else {
             Logger.shared.connection("Veri string olarak çözülemedi", level: .warning)
             // Hex string olarak gönder
             let hexString = data.map { String(format: "%02X", $0) }.joined(separator: " ")
             Logger.shared.connection("Hex veri: \(hexString)")
+            print("🔵 MIO HEX RESPONSE: \(hexString)") // Debug için
+            
+            // Mesaj loguna ekle
+            BluetoothMessageLogger.shared.logIncomingMessage(hexString, rawData: data)
+            print("🔵 HEX MESSAGE LOGGED: \(hexString)") // Debug için
+            
             delegate?.serialDidReceiveString(hexString)
         }
     }
