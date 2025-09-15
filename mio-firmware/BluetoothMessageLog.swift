@@ -292,9 +292,15 @@ struct BluetoothMessageLogView: View {
                 .fill(Color(.systemBackground))
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
         )
+        .onTapGesture {
+            hideKeyboard()
+        }
         .padding(.horizontal, 16)
     }
     
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
     
     private func sendCommand() {
         guard !commandText.isEmpty else { return }

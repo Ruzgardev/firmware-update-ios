@@ -7,33 +7,37 @@ struct WritePageView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var firmwareService: FirmwareUpdateService
     @StateObject private var messageLogger = BluetoothMessageLogger.shared
+    @ObservedObject var cardSetManager: CardSetManager
     @State private var selectedCardIndex: Int = 0
+    @State private var showingEditCard: CardData?
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
-                    headerView
-                    
-                    // Kart Seçimi
-                    if !cardSet.cards.isEmpty {
-                        cardSelectionView
-                    }
-                    
-                    // Büyük Yazma Butonu
-                    if !cardSet.cards.isEmpty {
-                        writeButtonView
-                    }
-                    
-                    // Mesaj Log Alanı
-                    messageLogView
+        ScrollView {
+            VStack(spacing: 20) {
+                headerView
+                
+                // Kart Seçimi
+                if !cardSet.cards.isEmpty {
+                    cardSelectionView
                 }
-                .padding()
+                
+                // Büyük Yazma Butonu
+                if !cardSet.cards.isEmpty {
+                    writeButtonView
+                }
+                
+                // Mesaj Log Alanı
+                messageLogView
             }
-            .navigationTitle("Kart Yazma")
-            .navigationBarTitleDisplayMode(.inline)
+            .padding()
+        }
+        .navigationTitle("Kart Yazma")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $showingEditCard) { card in
+            EditCardView(card: card, cardSet: cardSet, cardSetManager: cardSetManager)
         }
     }
+    
     
     // MARK: - View Components
     
@@ -53,9 +57,24 @@ struct WritePageView: View {
     
     private var cardSelectionView: some View {
         VStack(spacing: 10) {
-            Text("Kart Seç")
-                .font(.headline)
-                .foregroundColor(.primary)
+            HStack {
+                Text("Kart Seç")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                // Düzenleme Butonu
+                if !cardSet.cards.isEmpty {
+                    Button(action: {
+                        showingEditCard = cardSet.cards[selectedCardIndex]
+                    }) {
+                        Image(systemName: "pencil.circle.fill")
+                            .foregroundColor(.orange)
+                            .font(.title2)
+                    }
+                }
+            }
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -269,5 +288,5 @@ extension WritePageView: BluetoothServiceDelegate {
         ]
     )
     
-    WritePageView(cardSet: sampleCardSet, bluetoothService: BluetoothService(), firmwareService: FirmwareUpdateService())
+    WritePageView(cardSet: sampleCardSet, bluetoothService: BluetoothService(), firmwareService: FirmwareUpdateService(), cardSetManager: CardSetManager())
 }

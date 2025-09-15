@@ -8,62 +8,60 @@ struct CardManagementView: View {
     @State private var showingEditCard: CardData?
     
     var body: some View {
-        NavigationView {
-            VStack {
-                if cardSet.cards.isEmpty {
-                    // Boş durum
-                    VStack(spacing: 20) {
-                        Image(systemName: "creditcard")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        
-                        Text("Henüz kart yok")
-                            .font(.title2)
-                            .foregroundColor(.gray)
-                        
-                        Text("İlk kartınızı ekleyin")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        Button("Kart Ekle") {
-                            showingAddCard = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    // Kart listesi
-                    List {
-                        ForEach(cardSet.cards) { card in
-                            CardRowView(
-                                card: card,
-                                onEdit: {
-                                    showingEditCard = card
-                                },
-                                onDelete: {
-                                    deleteCard(card)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Kart Yönetimi")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Ekle") {
+        VStack {
+            if cardSet.cards.isEmpty {
+                // Boş durum
+                VStack(spacing: 20) {
+                    Image(systemName: "creditcard")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                    
+                    Text("Henüz kart yok")
+                        .font(.title2)
+                        .foregroundColor(.gray)
+                    
+                    Text("İlk kartınızı ekleyin")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Button("Kart Ekle") {
                         showingAddCard = true
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // Kart listesi
+                List {
+                    ForEach(cardSet.cards) { card in
+                        CardRowView(
+                            card: card,
+                            onEdit: {
+                                showingEditCard = card
+                            },
+                            onDelete: {
+                                deleteCard(card)
+                            }
+                        )
+                    }
                 }
             }
-            .sheet(isPresented: $showingAddCard) {
-                AddCardToSetView(cardData: nil)
+        }
+        .navigationTitle("Kart Yönetimi")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Ekle") {
+                    showingAddCard = true
+                }
             }
-            .sheet(item: $showingEditCard) { card in
-                EditCardView(card: card, cardSet: cardSet, cardSetManager: cardSetManager)
-            }
+        }
+        .sheet(isPresented: $showingAddCard) {
+            AddCardToSetView(cardData: nil)
+        }
+        .sheet(item: $showingEditCard) { card in
+            EditCardView(card: card, cardSet: cardSet, cardSetManager: cardSetManager)
         }
     }
     
@@ -203,118 +201,6 @@ struct AddCardView: View {
     }
 }
 
-// MARK: - EditCardView
-struct EditCardView: View {
-    let card: CardData
-    let cardSet: CardSet
-    @ObservedObject var cardSetManager: CardSetManager
-    @Environment(\.dismiss) private var dismiss
-    @State private var cardName: String
-    @State private var block4: String
-    @State private var block5: String
-    @State private var block6: String
-    @State private var block7: String
-    @State private var block8: String
-    
-    init(card: CardData, cardSet: CardSet, cardSetManager: CardSetManager) {
-        self.card = card
-        self.cardSet = cardSet
-        self.cardSetManager = cardSetManager
-        self._cardName = State(initialValue: card.name)
-        self._block4 = State(initialValue: card.block4)
-        self._block5 = State(initialValue: card.block5)
-        self._block6 = State(initialValue: card.block6)
-        self._block7 = State(initialValue: card.block7)
-        self._block8 = State(initialValue: card.block8)
-    }
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Kart Adı")
-                        .font(.headline)
-                    
-                    TextField("Kart adı girin", text: $cardName)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Block4")
-                        .font(.headline)
-                    
-                    TextField("Block4 verisi", text: $block4)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Block5")
-                        .font(.headline)
-                    
-                    TextField("Block5 verisi", text: $block5)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Block6")
-                        .font(.headline)
-                    
-                    TextField("Block6 verisi", text: $block6)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Block7")
-                        .font(.headline)
-                    
-                    TextField("Block7 verisi", text: $block7)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Block8")
-                        .font(.headline)
-                    
-                    TextField("Block8 verisi", text: $block8)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                Spacer()
-                
-                Button("Kartı Güncelle") {
-                    // Kartı güncelle
-                    let updatedCard = CardData(
-                        name: cardName,
-                        block4: block4,
-                        block5: block5,
-                        block6: block6,
-                        block7: block7,
-                        block8: block8
-                    )
-                    
-                    // Eski kartı sil, yenisini ekle
-                    cardSetManager.removeCardFromSet(card, from: cardSet)
-                    cardSetManager.addCardToSet(updatedCard, to: cardSet)
-                    
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
-                .disabled(cardName.isEmpty || block4.isEmpty)
-            }
-            .padding()
-            .navigationTitle("Kart Düzenle")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("İptal") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
 
 #Preview {
     let sampleCardSet = CardSet(

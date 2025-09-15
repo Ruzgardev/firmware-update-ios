@@ -61,7 +61,13 @@ class CardSetManager: ObservableObject {
     func removeCardFromSet(_ cardData: CardData, from cardSet: CardSet) {
         if let index = cardSets.firstIndex(where: { $0.id == cardSet.id }) {
             var updatedCardSet = cardSets[index]
-            updatedCardSet.cards.removeAll { $0.block4 == cardData.block4 }
+            updatedCardSet.cards.removeAll { card in
+                card.block4 == cardData.block4 &&
+                card.block5 == cardData.block5 &&
+                card.block6 == cardData.block6 &&
+                card.block7 == cardData.block7 &&
+                card.block8 == cardData.block8
+            }
             updatedCardSet.updatedAt = Date()
             cardSets[index] = updatedCardSet
             saveCardSets()

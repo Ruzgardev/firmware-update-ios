@@ -100,24 +100,9 @@ struct CardSetRowView: View {
                     Spacer()
                 }
                 
-                // Butonlar
-                HStack(spacing: 12) {
-                    // Düzenleme Butonu
-                    NavigationLink(destination: CardManagementView(cardSet: cardSet, cardSetManager: cardSetManager)) {
-                        HStack {
-                            Image(systemName: "pencil.circle.fill")
-                            Text("Düzenle")
-                        }
-                        .font(.caption)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.blue)
-                        .cornerRadius(15)
-                    }
-                    
-                    // Kart Yazma Butonu
-                    NavigationLink(destination: WritePageView(cardSet: cardSet, bluetoothService: bluetoothService, firmwareService: firmwareService)) {
+                // Kart Yazma Butonu
+                HStack {
+                    NavigationLink(destination: WritePageView(cardSet: cardSet, bluetoothService: bluetoothService, firmwareService: firmwareService, cardSetManager: cardSetManager)) {
                         HStack {
                             Image(systemName: "creditcard.fill")
                             Text("Kart Yaz")
@@ -185,6 +170,13 @@ struct AddCardSetView: View {
                 }
             }
         }
+        .onTapGesture {
+            hideKeyboard()
+        }
+    }
+    
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
