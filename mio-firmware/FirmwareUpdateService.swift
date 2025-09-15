@@ -10,6 +10,12 @@ import CoreBluetooth
 import UIKit
 import CoreMedia
 
+// MARK: - FirmwareType
+enum FirmwareType {
+    case normal
+    case production
+}
+
 // MARK: - FirmwareUpdateDataModel
 struct FirmwareUpdateDataModel {
     let version: Int?
@@ -27,6 +33,20 @@ class FirmwareUpdateService: ObservableObject {
     @Published var isUpdating: Bool = false
     @Published var estimatedTimeRemaining: String = ""
     @Published var transferSpeed: Double = 0.0
+    @Published var deviceFirmwareVersion: Int = 0
+    @Published var isProductionMode: Bool = false
+    
+    // NFC Write Mode Properties
+    @Published var isWriteModeActive: Bool = false
+    @Published var writeModeStats = WriteModeStats(total: 0, success: 0, error: 0)
+    @Published var lastReadCardData: CardData? // Son okunan kart data
+    @Published var writeModeStatusMessage: String = "Hazır"
+    
+    // Döngü Sistemi Properties
+    @Published var isCycleActive: Bool = false // Döngü aktif mi
+    @Published var cycleCardData: CardData? // Döngüdeki kart data
+    @Published var successCount: Int = 0 // Success sayacı (2'ye ulaşınca yeni data dinle)
+    @Published var cycleStatusMessage: String = "Döngü hazır"
     
     private var bluetoothService: BluetoothService?
     private var firmwareData: Data?
@@ -35,6 +55,7 @@ class FirmwareUpdateService: ObservableObject {
     private var currentPacketIndex: Int = 0
     private var startTime: CFTimeInterval = 0
     private var isNewDevice: Bool = true
+    private var firmwareType: FirmwareType = .normal
     
     // Paket boyutları (sadece yeni cihaz için)
     private let packetSize = 155
@@ -54,7 +75,8 @@ class FirmwareUpdateService: ObservableObject {
     }
     
     /// Firmware dosyasını yükle
-    func loadFirmwareFile(fileName: String) -> Bool {
+    func loadFirmwareFile(fileName: String, firmwareType: FirmwareType = .normal) -> Bool {
+        self.firmwareType = firmwareType
         Logger.shared.firmware("Firmware dosyası yüklenmeye çalışılıyor: \(fileName).bin")
         
         guard let fileURL = Bundle.main.url(forResource: fileName, withExtension: "bin") else {
@@ -79,7 +101,15 @@ class FirmwareUpdateService: ObservableObject {
     }
     
     /// Firmware update işlemini başlat
-    func startFirmwareUpdate(isNewDevice: Bool) {
+    func startFirmwareUpdate(isNewDevice: Bool, firmwareType: FirmwareType = .normal) {
+        self.firmwareType = firmwareType
+        
+        // Firmware dosyasını yükle
+        let fileName = firmwareType == .production ? "uretim-mode-firmware" : "firmware"
+        if !loadFirmwareFile(fileName: fileName, firmwareType: firmwareType) {
+            return
+        }
+        
         guard let firmwareData = firmwareData else {
             updateStatus = "Firmware dosyası yüklenmemiş"
             return
@@ -96,6 +126,9 @@ class FirmwareUpdateService: ObservableObject {
         currentPacketIndex = 0
         startTime = CACurrentMediaTime()
         
+        // Firmware update sırasında ekranın kapanmasını engelle
+        UIApplication.shared.isIdleTimerDisabled = true
+        
         // Firmware dosyasını hazırla
         prepareFirmwareData()
         
@@ -111,6 +144,100 @@ class FirmwareUpdateService: ObservableObject {
         isUpdating = false
         updateStatus = "Update iptal edildi"
         updateProgress = 0.0
+        
+        // Ekran kapanma özelliğini geri aç
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+    
+    // MARK: - NFC Write Mode Methods
+    
+    /// Döngüye girecek kart data'sını seç
+    func selectCycleCardData(_ cardData: CardData) {
+        cycleCardData = cardData
+        cycleStatusMessage = "Döngü data seçildi: \(cardData.block4.prefix(20))..."
+        Logger.shared.firmware("Döngü data seçildi: \(cardData.block4)")
+    }
+    
+    /// Döngü başlat
+    func startCycle() {
+        guard let cardData = cycleCardData else {
+            cycleStatusMessage = "Önce döngü data'sı seçin!"
+            Logger.shared.firmware("Hata: Döngü data seçilmedi")
+            return
+        }
+        
+        isCycleActive = true
+        successCount = 0
+        cycleStatusMessage = "Döngü başlatıldı - İlk yazma komutu gönderiliyor..."
+        
+        // İlk yazma komutunu gönder
+        sendWriteCommand(cardData: cardData)
+    }
+    
+    /// Döngü durdur
+    func stopCycle() {
+        isCycleActive = false
+        successCount = 0
+        cycleStatusMessage = "Döngü durduruldu"
+        Logger.shared.firmware("Döngü durduruldu")
+    }
+    
+    /// Yazma komutu gönder
+    private func sendWriteCommand(cardData: CardData) {
+        let command = [
+            "Type": 50,
+            "WriteMode": [
+                "Action": "START",
+                "CardData": [
+                    "Block4": cardData.block4,
+                    "Block5": cardData.block5,
+                    "Block6": cardData.block6,
+                    "Block7": cardData.block7,
+                    "Block8": cardData.block8
+                ]
+            ]
+        ] as [String: Any]
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: command),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            bluetoothService?.sendJSON(jsonString)
+            writeModeStatusMessage = "Yazma komutu gönderiliyor..."
+            Logger.shared.firmware("Yazma komutu gönderiliyor: \(cardData.block4)")
+        }
+    }
+    
+    /// NFC yazma modu başlat ve son okunan kart data gönder (tek komut)
+    func startNFCWriteModeWithLastReadCardData() {
+        guard let cardData = lastReadCardData else {
+            writeModeStatusMessage = "Önce bir kart okuyun!"
+            Logger.shared.firmware("Hata: Kart okunmadı")
+            return
+        }
+        
+        sendWriteCommand(cardData: cardData)
+    }
+    
+    /// NFC yazma modu durdur
+    func stopNFCWriteMode() {
+        let command = ["Type": 51, "Status": "Stop Write Mode"] as [String: Any]
+        if let jsonData = try? JSONSerialization.data(withJSONObject: command),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            bluetoothService?.sendJSON(jsonString)
+            isWriteModeActive = false
+            writeModeStatusMessage = "Yazma modu durduruluyor..."
+            Logger.shared.firmware("NFC yazma modu durduruluyor...")
+        }
+    }
+    
+    /// Kart okuma komutu gönder
+    func readCard() {
+        let command = ["Type": 52] as [String: Any]
+        if let jsonData = try? JSONSerialization.data(withJSONObject: command),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            bluetoothService?.sendJSON(jsonString)
+            writeModeStatusMessage = "Kart okuma komutu gönderildi"
+            Logger.shared.firmware("Kart okuma komutu gönderildi")
+        }
     }
     
     // MARK: - Private Methods
@@ -136,17 +263,21 @@ class FirmwareUpdateService: ObservableObject {
     
     /// Yeni cihaz için update başlat
     private func startNewDeviceUpdate() {
+        let version = firmwareType == .production ? 5 : 1
+        let fileName = firmwareType == .production ? "uretim-mode-firmware.bin" : "firmware.bin"
+        
         let firmwareModel = FirmwareUpdateDataModel(
-            version: 1,
+            version: version,
             totalSize: firmwareData?.count ?? 0,
-            fileName: "firmware.bin",
+            fileName: fileName,
             fileData: firmwareData
         )
         
         let command = Commands.PRG_COMMAND(firmwareModel: firmwareModel)
         bluetoothService?.sendJSON(command)
         
-        updateStatus = "Update komutu gönderildi (Yeni cihaz)"
+        let firmwareTypeText = firmwareType == .production ? "Üretim Modu" : "Normal"
+        updateStatus = "Update komutu gönderildi (\(firmwareTypeText) - Versiyon \(version))"
     }
     
     /// Eski cihaz için update başlat
@@ -235,6 +366,9 @@ class FirmwareUpdateService: ObservableObject {
         isUpdating = false
         updateProgress = 1.0
         updateStatus = "Firmware update başarıyla tamamlandı!"
+        
+        // Ekran kapanma özelliğini geri aç
+        UIApplication.shared.isIdleTimerDisabled = false
         
         let endTime = CACurrentMediaTime()
         let duration = endTime - startTime
@@ -346,6 +480,16 @@ class FirmwareUpdateService: ObservableObject {
                     }
                 }
                 
+                // NFC Write Mode Response (Type 50)
+                if let type = dict["Type"] as? Int, type == 50 {
+                    handleNFCWriteModeResponse(dict)
+                }
+                
+                // NFC Card Data Response (RType 52)
+                if let rType = dict["RType"] as? Int, rType == 52 {
+                    handleNFCCardDataResponse(dict)
+                }
+                
                 // Hata mesajı
                 if let error = dict["Error"] as? String {
                     Logger.shared.firmware("Hata mesajı: \(error)", level: .error)
@@ -378,7 +522,12 @@ class FirmwareUpdateService: ObservableObject {
             }
         }
         if let version = login["FWVersion"] as? Int {
+            deviceFirmwareVersion = version
+            isProductionMode = (version == 5)
+            
             Logger.shared.firmware("Firmware versiyonu: \(version)")
+            Logger.shared.firmware("Üretim modu: \(isProductionMode ? "Açık" : "Kapalı")")
+            
             // MD'ye göre versiyonu noktalı formata çevir
             let versionString = String(version)
             var formattedVersion = ""
@@ -470,6 +619,106 @@ class FirmwareUpdateService: ObservableObject {
         if currentPacketIndex >= totalPackets {
             completeUpdate()
         }
+    }
+    
+    /// NFC Write Mode Response işle
+    private func handleNFCWriteModeResponse(_ json: [String: Any]) {
+        // Yeni sistem response'ları
+        if let status = json["Status"] as? String {
+            let writeCount = json["WriteCount"] as? Int ?? 0
+            let successCount = json["SuccessCount"] as? Int ?? 0
+            let errorCount = json["ErrorCount"] as? Int ?? 0
+            
+            let newStats = WriteModeStats(
+                total: writeCount,
+                success: successCount,
+                error: errorCount
+            )
+            
+            DispatchQueue.main.async {
+                self.writeModeStats = newStats
+                
+                switch status {
+                case "Write Mode Opened":
+                    self.isWriteModeActive = true
+                    self.writeModeStatusMessage = "Yazma modu açıldı - Kart data gönderin"
+                case "Write Mode Closed":
+                    self.isWriteModeActive = false
+                    self.writeModeStatusMessage = "Kart yazıldı! Test için kartı okutun"
+                    
+                    // Döngü aktifse success sayacını artır
+                    if self.isCycleActive {
+                        self.successCount += 1
+                        self.cycleStatusMessage = "Success \(self.successCount)/2 - Test için kartı okutun"
+                        
+                        // 2 success'e ulaştıysa yeni data dinlemeye geç
+                        if self.successCount >= 2 {
+                            self.cycleStatusMessage = "2 Success tamamlandı - Yeni kart data'sı bekleniyor..."
+                            self.successCount = 0 // Sayaç sıfırla
+                        }
+                    }
+                default:
+                    self.writeModeStatusMessage = "Durum: \(status)"
+                }
+            }
+            
+            Logger.shared.firmware("NFC Write Mode Response: \(status), Stats: \(newStats)")
+        }
+        // Eski sistem response'ları (fallback)
+        else if let writeModeData = json["WriteMode"] as? [String: Any],
+                let status = writeModeData["Status"] as? String,
+                let statsData = writeModeData["Stats"] as? [String: Any] {
+            
+            let newStats = WriteModeStats(
+                total: statsData["Total"] as? Int ?? 0,
+                success: statsData["Success"] as? Int ?? 0,
+                error: statsData["Error"] as? Int ?? 0
+            )
+            
+            DispatchQueue.main.async {
+                self.writeModeStats = newStats
+                
+                if status == "SUCCESS" {
+                    if newStats.total > 0 {
+                        self.writeModeStatusMessage = "Kart yazıldı! Toplam: \(newStats.total), Başarılı: \(newStats.success)"
+                    } else {
+                        self.writeModeStatusMessage = "Yazma modu aktif - Kartları okutun"
+                    }
+                } else {
+                    self.writeModeStatusMessage = "Kart yazma hatası! Hata: \(newStats.error)"
+                }
+            }
+            
+            Logger.shared.firmware("NFC Write Mode Response (Legacy): \(status), Stats: \(newStats)")
+        }
+    }
+    
+    /// NFC Card Data Response işle
+    private func handleNFCCardDataResponse(_ json: [String: Any]) {
+        guard let cardDataDict = json["CardData"] as? [String: Any] else { return }
+        
+        let cardData = CardData(
+            name: "", // Okunan kartlar için isim boş
+            block4: cardDataDict["Block4"] as? String ?? "",
+            block5: cardDataDict["Block5"] as? String ?? "",
+            block6: cardDataDict["Block6"] as? String ?? "",
+            block7: cardDataDict["Block7"] as? String ?? "",
+            block8: cardDataDict["Block8"] as? String ?? ""
+        )
+        
+        DispatchQueue.main.async {
+            self.lastReadCardData = cardData
+            self.writeModeStatusMessage = "Kart okundu - Hex data alındı"
+            
+            // Döngü aktifse ve 2 success tamamlandıysa yeni data ile döngüyü devam ettir
+            if self.isCycleActive && self.successCount == 0 {
+                self.cycleStatusMessage = "Yeni kart data alındı - Döngü devam ediyor..."
+                // Yeni data ile yazma komutunu gönder
+                self.sendWriteCommand(cardData: cardData)
+            }
+        }
+        
+        Logger.shared.firmware("NFC Card Data Received: \(cardData)")
     }
     
     // MARK: - Helper Methods

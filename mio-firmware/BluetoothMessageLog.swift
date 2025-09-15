@@ -162,6 +162,7 @@ struct BluetoothMessageLogView: View {
     
     // BluetoothService referansı - ContentView'dan geçilecek
     var bluetoothService: BluetoothService?
+    var firmwareService: FirmwareUpdateService?
     
     private var filteredMessages: [BluetoothMessageEntry] {
         var filtered = messageLogger.messages
@@ -267,20 +268,22 @@ struct BluetoothMessageLogView: View {
                 .disabled(commandText.isEmpty)
             }
             
-            // Quick command buttons - Trans X3 ve Set Unique ID (yatay scroll)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    QuickCommandButton(title: "Trans X3", command: "{\"Type\": 33, \"Transx3\": 1}") {
-                        commandText = "{\"Type\": 33, \"Transx3\": 1}"
-                        sendCommand()
+            // Quick command buttons - sadece normal modda göster
+            if !(firmwareService?.isProductionMode ?? false) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        QuickCommandButton(title: "Trans X3", command: "{\"Type\": 33, \"Transx3\": 1}") {
+                            commandText = "{\"Type\": 33, \"Transx3\": 1}"
+                            sendCommand()
+                        }
+                        
+                        QuickCommandButton(title: "Set Unique ID", command: "{\"Type\": 36, \"UniqueID\": \"\(uniqueID)\"}") {
+                            commandText = "{\"Type\": 36, \"UniqueID\": \"\(uniqueID)\"}"
+                            sendCommand()
+                        }
                     }
-                    
-                    QuickCommandButton(title: "Set Unique ID", command: "{\"Type\": 36, \"UniqueID\": \"\(uniqueID)\"}") {
-                        commandText = "{\"Type\": 36, \"UniqueID\": \"\(uniqueID)\"}"
-                        sendCommand()
-                    }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
             }
         }
         .padding(16)
@@ -505,7 +508,9 @@ class QRScannerViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        setupCamera()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.setupCamera()
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -557,17 +562,25 @@ class QRScannerViewController: UIViewController {
         }
         
         previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        previewLayer?.frame = view.layer.bounds
-        previewLayer?.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(previewLayer!)
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.previewLayer?.frame = self.view.layer.bounds
+            self.previewLayer?.videoGravity = .resizeAspectFill
+            self.view.layer.addSublayer(self.previewLayer!)
+        }
     }
     
     private func startScanning() {
-        captureSession?.startRunning()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.captureSession?.startRunning()
+        }
     }
     
     private func stopScanning() {
-        captureSession?.stopRunning()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.captureSession?.stopRunning()
+        }
     }
 }
 

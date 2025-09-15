@@ -8,11 +8,76 @@
 import SwiftUI
 import CoreBluetooth
 
+// MARK: - Theme Colors
+extension Color {
+    static let productionPurple = Color(red: 0.6, green: 0.2, blue: 0.8)
+    static let productionPurpleLight = Color(red: 0.8, green: 0.6, blue: 0.9)
+    static let productionPurpleDark = Color(red: 0.4, green: 0.1, blue: 0.6)
+    static let productionBackground = Color(red: 0.95, green: 0.9, blue: 0.98)
+    static let productionCardBackground = Color(red: 0.98, green: 0.95, blue: 1.0)
+}
+
 struct ContentView: View {
     @StateObject private var bluetoothService = BluetoothService()
     @StateObject private var firmwareService: FirmwareUpdateService
     @State private var selectedPeripheral: CBPeripheral?
     @State private var showingDeviceInfo = false
+    
+    // Theme properties
+    private var isProductionMode: Bool {
+        firmwareService.isProductionMode
+    }
+    
+    private var primaryColor: Color {
+        isProductionMode ? .productionPurple : .blue
+    }
+    
+    private var backgroundColor: Color {
+        isProductionMode ? .productionBackground : Color(.systemBackground)
+    }
+    
+    private var cardBackgroundColor: Color {
+        isProductionMode ? .productionCardBackground : Color(.systemGray6)
+    }
+    
+    // MARK: - Button Views
+    
+    private var normalFirmwareButtons: some View {
+        VStack(spacing: 10) {
+            // Normal firmware update
+            Button("Mio Firmware Update") {
+                firmwareService.startFirmwareUpdate(isNewDevice: true, firmwareType: .normal)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!bluetoothService.isReady)
+            
+            // Üretim modu firmware update
+            Button("Üretim Modu Firmware Update") {
+                firmwareService.startFirmwareUpdate(isNewDevice: true, firmwareType: .production)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.purple)
+            .disabled(!bluetoothService.isReady)
+        }
+    }
+    
+    private var nfcWriteModeButtons: some View {
+        VStack(spacing: 15) {
+            // NFC Yazma Modu Durum
+            HStack {
+                Circle()
+                    .fill(firmwareService.isWriteModeActive ? .green : .gray)
+                    .frame(width: 12, height: 12)
+                
+                Text(firmwareService.writeModeStatusMessage)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+            }
+            
+        }
+    }
     
     init() {
         let bluetooth = BluetoothService()
@@ -35,16 +100,18 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("Mio Firmware Update")
+            .background(backgroundColor)
+            .navigationTitle(isProductionMode ? "Mio Üretim Modu" : "Mio Firmware Update")
             .navigationBarTitleDisplayMode(.inline)
             .onTapGesture {
                 // Klavyeyi kapat
                 hideKeyboard()
             }
         }
+        .background(backgroundColor)
         .onAppear {
             bluetoothService.delegate = self
-            _ = firmwareService.loadFirmwareFile(fileName: "firmware")
+            _ = firmwareService.loadFirmwareFile(fileName: "firmware", firmwareType: .normal)
         }
     }
     
@@ -52,6 +119,7 @@ struct ContentView: View {
     private func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
+    
     
     // MARK: - Main View
     private var mainView: some View {
@@ -84,7 +152,7 @@ struct ContentView: View {
                     }
                 }) {
                     Image(systemName: bluetoothService.isScanning ? "stop.circle.fill" : "magnifyingglass.circle.fill")
-                        .foregroundColor(.blue)
+                        .foregroundColor(primaryColor)
                 }
             }
         }
@@ -98,24 +166,95 @@ struct ContentView: View {
                 .background(Color.gray.opacity(0.3))
             
             // Mesaj log alanı
-            BluetoothMessageLogView(bluetoothService: bluetoothService)
+            BluetoothMessageLogView(bluetoothService: bluetoothService, firmwareService: firmwareService)
         }
     }
     
     // MARK: - Header View
     private var headerView: some View {
         VStack(spacing: 10) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
+            Image(systemName: isProductionMode ? "gear.badge.checkmark" : "antenna.radiowaves.left.and.right")
                 .font(.system(size: 50))
-                .foregroundColor(.blue)
+                .foregroundColor(primaryColor)
             
-            Text("Mio ESP Firmware Update")
+            Text(isProductionMode ? "Mio ESP Üretim Modu" : "Mio ESP Firmware Update")
                 .font(.title2)
                 .fontWeight(.bold)
+                .foregroundColor(isProductionMode ? .productionPurpleDark : .primary)
             
-            Text("Bluetooth ile firmware güncelleme")
+            Text(isProductionMode ? "Üretim modu aktif - Versiyon \(firmwareService.deviceFirmwareVersion)" : "Bluetooth ile firmware güncelleme")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            
+            // Kart Okuma Butonu (Sadece Üretim Modunda)
+            if isProductionMode {
+                Button("Kart Oku") {
+                    firmwareService.readCard()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(!bluetoothService.isReady)
+            }
+            
+            // Son Okunan Kart Data (Sadece Üretim Modunda)
+            if isProductionMode, let cardData = firmwareService.lastReadCardData {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Son Okunan Kart Data")
+                        .font(.headline)
+                        .foregroundColor(.productionPurpleDark)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Block4: \(cardData.block4)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Block5: \(cardData.block5)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Block6: \(cardData.block6)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Block7: \(cardData.block7)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Block8: \(cardData.block8)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                    
+                    // Kart Setine Ekle Butonu
+                    NavigationLink(destination: AddCardToSetView(cardData: cardData)) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Kart Setine Ekle")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(primaryColor)
+                        .cornerRadius(15)
+                    }
+                }
+            }
+            
+            // Kart Setleri Butonu (Sadece Üretim Modunda)
+            if isProductionMode {
+                NavigationLink(destination: CardSetsView(bluetoothService: bluetoothService, firmwareService: firmwareService)) {
+                    HStack {
+                        Image(systemName: "creditcard.and.123")
+                        Text("Kart Setleri")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(primaryColor)
+                    .cornerRadius(20)
+                }
+            }
         }
     }
     
@@ -144,9 +283,9 @@ struct ContentView: View {
                     
                     HStack {
                         Text("Tip:")
-                        Text("Yeni Mio")
+                        Text(isProductionMode ? "Üretim Modu Mio" : "Yeni Mio")
                             .fontWeight(.semibold)
-                            .foregroundColor(.blue)
+                            .foregroundColor(primaryColor)
                         Spacer()
                     }
                     
@@ -163,7 +302,7 @@ struct ContentView: View {
             }
         }
         .padding()
-        .background(Color(.systemGray6))
+        .background(cardBackgroundColor)
         .cornerRadius(10)
     }
     
@@ -190,7 +329,8 @@ struct ContentView: View {
                         onTap: {
                             selectedPeripheral = peripheral
                             bluetoothService.connectToPeripheral(peripheral)
-                        }
+                        },
+                        firmwareService: firmwareService
                     )
                 }
             }
@@ -232,15 +372,44 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
             
             // Action Buttons
-            VStack(spacing: 10) {
+            VStack(spacing: 15) {
                 if !firmwareService.isUpdating {
-                    // Sadece yeni Mio cihazı için
-                    Button("Mio Firmware Update") {
-                        firmwareService.startFirmwareUpdate(isNewDevice: true)
+                    if isProductionMode {
+                        // Üretim modu - hem NFC yazma modu hem firmware update
+                        VStack(spacing: 15) {
+                            // NFC Yazma Modu Bölümü
+                            nfcWriteModeButtons
+                            
+                            // Divider
+                            Divider()
+                                .background(Color.gray.opacity(0.3))
+                            
+                            // Firmware Update Bölümü
+                            VStack(spacing: 10) {
+                                Text("Firmware Update")
+                                    .font(.headline)
+                                    .foregroundColor(.productionPurpleDark)
+                                
+                                // Normal firmware update
+                                Button("Mio Firmware Update") {
+                                    firmwareService.startFirmwareUpdate(isNewDevice: true, firmwareType: .normal)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!bluetoothService.isReady)
+                                
+                                // Üretim modu firmware update
+                                Button("Üretim Modu Firmware Update") {
+                                    firmwareService.startFirmwareUpdate(isNewDevice: true, firmwareType: .production)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.productionPurple)
+                                .disabled(!bluetoothService.isReady)
+                            }
+                        }
+                    } else {
+                        // Normal mod - firmware update butonları
+                        normalFirmwareButtons
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!bluetoothService.isReady)
-                    
                 } else {
                     Button("Durdur") {
                         firmwareService.stopFirmwareUpdate()
@@ -251,7 +420,7 @@ struct ContentView: View {
             }
         }
         .padding()
-        .background(Color(.systemGray6))
+        .background(cardBackgroundColor)
         .cornerRadius(10)
     }
 }
@@ -261,12 +430,21 @@ struct DeviceRowView: View {
     let peripheral: CBPeripheral
     let isSelected: Bool
     let onTap: () -> Void
+    @ObservedObject var firmwareService: FirmwareUpdateService
+    
+    private var isProductionMode: Bool {
+        firmwareService.isProductionMode
+    }
+    
+    private var primaryColor: Color {
+        isProductionMode ? .productionPurple : .blue
+    }
     
     var body: some View {
         Button(action: onTap) {
             HStack {
                 Image(systemName: "antenna.radiowaves.left.and.right")
-                    .foregroundColor(.blue)
+                    .foregroundColor(primaryColor)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(peripheral.name ?? "Bilinmeyen Cihaz")
@@ -286,12 +464,13 @@ struct DeviceRowView: View {
                 }
             }
             .padding()
-            .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+            .background(isSelected ? primaryColor.opacity(0.1) : Color(.systemGray6))
             .cornerRadius(8)
         }
         .buttonStyle(PlainButtonStyle())
     }
 }
+
 
 // MARK: - BluetoothServiceDelegate
 extension ContentView: BluetoothServiceDelegate {
